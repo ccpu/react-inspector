@@ -4,6 +4,7 @@ import {
   findFiberByHostInstance,
   getDebugSourceFromFiber,
   getEditorLink,
+  isCustomProtocolUrl,
   isReactDevtoolsRunning,
 } from "./utils";
 import Overlay from "./Overlay";
@@ -14,6 +15,11 @@ let inspecting = false;
 let openInEditorUrl = DEFAULT_OPEN_IN_EDITOR_URL;
 const mousePos = { x: 0, y: 0 };
 let openInEditorMethod = "url";
+let openEditorRequestCounter = 0;
+
+const OPEN_EDITOR_REQUEST_TYPE = "react-inspector-open-editor";
+const OPEN_EDITOR_RESULT_TYPE = "react-inspector-open-editor-result";
+const OPEN_EDITOR_ACK_TIMEOUT_MS = 600;
 
 const getEventElement = (target: EventTarget | null): HTMLElement | null => {
   if (!target) return null;
@@ -31,6 +37,43 @@ const consumeEvent = (event: Event) => {
   if (typeof event.stopImmediatePropagation === "function") {
     event.stopImmediatePropagation();
   }
+};
+
+const openCustomProtocolByBackground = (deepLink: string): Promise<boolean> => {
+  const requestId = `open-editor-${Date.now()}-${openEditorRequestCounter++}`;
+
+  return new Promise((resolve) => {
+    let done = false;
+
+    const finish = (ok: boolean) => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("message", handleResultMessage);
+      window.clearTimeout(timeoutId);
+      resolve(ok);
+    };
+
+    const handleResultMessage = ({ data, source }: MessageEvent) => {
+      if (source !== window || !data || typeof data !== "object") return;
+      if (
+        data.type !== OPEN_EDITOR_RESULT_TYPE ||
+        data.requestId !== requestId
+      ) {
+        return;
+      }
+      finish(Boolean(data.ok));
+    };
+
+    const timeoutId = window.setTimeout(
+      () => finish(false),
+      OPEN_EDITOR_ACK_TIMEOUT_MS,
+    );
+    window.addEventListener("message", handleResultMessage);
+    window.postMessage(
+      { type: OPEN_EDITOR_REQUEST_TYPE, requestId, deepLink },
+      "*",
+    );
+  });
 };
 
 const getInspectName = (element: HTMLElement) => {
@@ -105,6 +148,11 @@ Try selecting a parent React element instead.`);
   const deepLink = getEditorLink(openInEditorUrl, debugSource);
   if (openInEditorMethod === "fetch") {
     fetch(deepLink);
+  } else if (isCustomProtocolUrl(deepLink)) {
+    const opened = await openCustomProtocolByBackground(deepLink);
+    if (!opened) {
+      window.open(deepLink);
+    }
   } else {
     window.open(deepLink);
   }
