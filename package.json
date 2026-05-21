@@ -6,13 +6,19 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "2.0.0-beta.26",
     "@types/chrome": "^0.0.195",
+    "@vitest/coverage-v8": "^4.1.7",
+    "@types/node": "^25.9.1",
+    "jsdom": "^29.1.1",
     "typescript": "^4.6.4",
-    "vite": "^5.4.10"
+    "vite": "^5.4.10",
+    "vitest": "^4.1.7"
   },
   "dependencies": {
     "@jridgewell/trace-mapping": "^0.3.31"

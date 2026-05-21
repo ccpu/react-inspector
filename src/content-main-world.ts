@@ -23,6 +23,16 @@ const getEventElement = (target: EventTarget | null): HTMLElement | null => {
   return null;
 };
 
+const consumeEvent = (event: Event) => {
+  if (event.cancelable) {
+    event.preventDefault();
+  }
+  event.stopPropagation();
+  if (typeof event.stopImmediatePropagation === "function") {
+    event.stopImmediatePropagation();
+  }
+};
+
 const getInspectName = (element: HTMLElement) => {
   const fiber = findFiberByHostInstance(element);
   const debugSource = getDebugSourceFromFiber(fiber);
@@ -50,7 +60,7 @@ const startInspectorMode = () => {
   }
 
   window.addEventListener("pointerover", handleElementPointerOver, true);
-  window.addEventListener("click", handleInspectorClick, true);
+  window.addEventListener("pointerdown", handleInspectorPointerDown, true);
 };
 
 const exitInspectorMode = () => {
@@ -60,7 +70,7 @@ const exitInspectorMode = () => {
     overlay = null;
   }
   window.removeEventListener("pointerover", handleElementPointerOver, true);
-  window.removeEventListener("click", handleInspectorClick, true);
+  window.removeEventListener("pointerdown", handleInspectorPointerDown, true);
 };
 
 const handleElementPointerOver = (e: PointerEvent) => {
@@ -69,8 +79,8 @@ const handleElementPointerOver = (e: PointerEvent) => {
   overlay.inspect([target], getInspectName(target));
 };
 
-const handleInspectorClick = async (e: MouseEvent) => {
-  e.preventDefault();
+const handleInspectorPointerDown = async (e: PointerEvent) => {
+  consumeEvent(e);
   exitInspectorMode();
   const target = getEventElement(e.target);
   if (!target) return;
