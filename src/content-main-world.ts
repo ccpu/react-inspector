@@ -1,7 +1,10 @@
 import {
   checkDevtoolsGlobalHook,
+  findDebugSourceByHostInstance,
   findFiberByHostInstance,
+  getDebugSourceFromFiber,
   getEditorLink,
+  isReactDevtoolsRunning,
 } from "./utils";
 import Overlay from "./Overlay";
 import { DEFAULT_OPEN_IN_EDITOR_URL } from "./constants";
@@ -10,12 +13,21 @@ let overlay: Overlay | null = null;
 let inspecting = false;
 let openInEditorUrl = DEFAULT_OPEN_IN_EDITOR_URL;
 const mousePos = { x: 0, y: 0 };
-let openInEditorMethod = 'url';
+let openInEditorMethod = "url";
+
+const getEventElement = (target: EventTarget | null): HTMLElement | null => {
+  if (!target) return null;
+  if (target instanceof HTMLElement) return target;
+  if (target instanceof Element) return target as HTMLElement;
+  if (target instanceof Node) return target.parentElement as HTMLElement | null;
+  return null;
+};
 
 const getInspectName = (element: HTMLElement) => {
   const fiber = findFiberByHostInstance(element);
-  if (!fiber) return "Source code could not be identified.";
-  const { fileName, columnNumber, lineNumber } = fiber._debugSource;
+  const debugSource = getDebugSourceFromFiber(fiber);
+  if (!debugSource) return "Source code could not be identified.";
+  const { fileName, columnNumber, lineNumber } = debugSource;
   const path = (fileName || "").split("/");
 
   return `${path.at(-3) || ""}/${path.at(-2) || ""}/${path.at(-1)}:${
@@ -30,7 +42,7 @@ const startInspectorMode = () => {
   }
   const element = document.elementFromPoint(
     mousePos.x,
-    mousePos.y
+    mousePos.y,
   ) as HTMLElement | null;
   if (element) {
     // highlight the initial point.
@@ -52,7 +64,7 @@ const exitInspectorMode = () => {
 };
 
 const handleElementPointerOver = (e: PointerEvent) => {
-  const target = e.target as HTMLElement | null;
+  const target = getEventElement(e.target);
   if (!target || !overlay) return;
   overlay.inspect([target], getInspectName(target));
 };
@@ -60,12 +72,18 @@ const handleElementPointerOver = (e: PointerEvent) => {
 const handleInspectorClick = async (e: MouseEvent) => {
   e.preventDefault();
   exitInspectorMode();
-  const target = e.target as HTMLElement | null;
+  const target = getEventElement(e.target);
   if (!target) return;
 
-  const fiber = findFiberByHostInstance(target);
-  if (!fiber) {
-    alert("This element cannot be opened in React Inspector.");
+  const debugSource = await findDebugSourceByHostInstance(target);
+  if (!debugSource) {
+    if (!isReactDevtoolsRunning()) {
+      alert(`React Developer Tools does not appear to be running.
+Please install/enable React Developer Tools, refresh the page, and try again.`);
+    } else {
+      alert(`This element cannot be opened in React Inspector.
+Try selecting a parent React element instead.`);
+    }
     return;
   }
 
@@ -74,10 +92,10 @@ const handleInspectorClick = async (e: MouseEvent) => {
   target.id = tmpId;
   window.postMessage("inspected", "*");
 
-  const deepLink = getEditorLink(openInEditorUrl, fiber._debugSource)
-  if(openInEditorMethod === 'fetch'){
+  const deepLink = getEditorLink(openInEditorUrl, debugSource);
+  if (openInEditorMethod === "fetch") {
     fetch(deepLink);
-  }else{
+  } else {
     window.open(deepLink);
   }
 };
@@ -87,8 +105,8 @@ window.addEventListener("message", ({ data }) => {
 
   if (data === "inspect") {
     if (!checkDevtoolsGlobalHook()) {
-      alert(`This page is not available to use the React Inspector.
-  Make sure React Developer Tools is installed and enabled.`);
+      alert(`React was not detected on this page.
+If this page uses React, make sure React Developer Tools is installed and running, then refresh.`);
       return;
     }
     if (inspecting) {
